@@ -1,256 +1,219 @@
 /*============================================================================*\
 +*
-+* This project uses the core of the debug stick add-on for Minecraft: Bedrock Edition
++* This project is an open source template to make some blocks act like chairs, this accomplishes that by spawning in an entity and seating the player on it, and removing the entity when it's not used.
 +*
-+* Official links to that project:
-+* MCPEDL: https://mcpedl.com/debug-stick
-+* GitHub: https://github.com/vytdev/debug-stick
-+*
-+* Official links:
-+* MCPEDL: https://mcpedl.com/Assassins-Wrenches
-+* GitHub: https://github.com/Assassin1065/xAssassin-s-Wrenches
-+*
-+* Copyright (c) 2023-2024 VYT <https://vytdev.github.io>
 +* Copyright (c) 2024 xAssassin <https://Assassin1065.github.io>
-+* This project is licensed under the MIT License, as well as the project it's built on. This project was made with explicit permission by the original copyright holder and complies with the terms in the MIT License.
++* This project is licensed under the MIT License.
 +* See LICENSE for more details.
 +* See Credits.txt for a list of contributors. Thank you to all of them for making this project possible.
 +*
 \*============================================================================*/
 
-import { world, EquipmentSlot, BlockStates, system } from "@minecraft/server";
+import { world, system, Direction } from "@minecraft/server";
 
-// Record to store the player's currently selected block property
-const record = {}; 
-// Record to store the cooldown time for each player
-const cooldowns = {}; 
+// A set to track player cooldowns for interacting with seats
+const cooldowns = new Set();
+// A map to track active seat entities and their locations
+const activeSeats = new Map();
+// The cooldown duration in seconds to prevent repeated interactions
+const cooldownDuration = 5;
 
-// List of allowed block states that can be modified by the wrench
-const allowedStates = [
-    "minecraft:cardinal_direction", "attachment", "door_hinge_bit", 
-    "wall_connection_type_west", "wall_connection_type_south", 
-    "wall_connection_type_north", "wall_connection_type_east", 
-    "top_slot_bit", "upside_down_bit", "weirdo_direction", 
-    "vertical_half", "pillar_axis", "attachment", 
-    "attached_bit", "lit", "facing", "facing_direction", "minecraft:facing_direction", "wall_post_bit", 
-    "ground_sign_direction", "hanging", "open_bit", "orientation", "direction", "minecraft:direction", "rail_direction"
+// List of invalid item names that shouldn't trigger the seating logic
+const invalidItemNames = [
+    "debug", "bucket", "spawn_egg", "steel"
 ];
 
-// Sends a message to the player's actionbar
-function message(msg, player) {
-    player.runCommandAsync(`titleraw @s actionbar {"rawtext":[{"text":${JSON.stringify(msg)}}]}`).catch(() => {});
-}
+// Initialize the script and remove any existing seat entities on startup
+const initializeScript = () => {
+  console.warn("§g§lChairs§r§a loaded§r");
 
-// Checks if the player is holding an item tagged as "xassassin:wrench"
-function isHoldingWrench(player) {
-    const mainhand = player.getComponent('minecraft:equippable');
-    const item = mainhand.getEquipment(EquipmentSlot.Mainhand);
-    return item && item.hasTag("xassassin:wrench"); 
-}
+  // Remove all existing seat entities in each dimension after 1 tick
+  system.runTimeout(() => {
+    const dimensions = ["minecraft:overworld", "minecraft:nether", "minecraft:the_end"];
+    dimensions.forEach(dimensionName => {
+      const dimension = world.getDimension(dimensionName);
+      const seatEntities = dimension.getEntities().filter(entity => entity.typeId === "fa:seat");
 
-// Damages the item in the player's main hand and breaks it if its durability reaches zero
-function damageItem(item, player) {
-    if (item && item.hasComponent("minecraft:durability") && player.getGameMode() !== 'creative') {
-        const durabilityComponent = item.getComponent("minecraft:durability");
-        durabilityComponent.damage += 1; // Increment damage by 1
-        
-        // Check if the item has reached its max durability (i.e., broken)
-        if (durabilityComponent.damage >= durabilityComponent.maxDurability) {
-            // Remove the item from the player's main hand and play the break sound
-            player.getComponent('minecraft:equippable').setEquipment(EquipmentSlot.Mainhand, null); 
-            player.playSound("random.break");
-        } else {
-            // Update the item with increased damage value
-            const mainhand = player.getComponent('minecraft:equippable');
-            mainhand.setEquipment(EquipmentSlot.Mainhand, item);
-        }
-    }
-}
+      // Use Entity.kill() instead of running the /kill command to clean up
+      seatEntities.forEach(seatEntity => seatEntity.kill());
+    });
+  }, 1);
+};
 
-// Checks if enough time has passed since the player's last interaction (cooldown system)
-function hasCooldownExpired(player) {
-    const currentTime = system.currentTick;
-    const lastUse = cooldowns[player.id] || 0;
-    const cooldownDuration = 4; // Cooldown of 4 ticks
-    
-    // If the cooldown has expired, update the player's cooldown time and return true
-    if (currentTime - lastUse >= cooldownDuration) {
-        cooldowns[player.id] = currentTime;
-        return true;
+initializeScript();
+
+// Event listener for when a player uses an item on a block (e.g., right-clicks a block)
+world.beforeEvents.itemUseOn.subscribe((eventData) => {
+  const player = eventData.source;
+  const blockLocation = eventData.block.location;
+  const dimension = world.getDimension(player.dimension.id);
+
+  // Get the item in the player's hand
+  const item = player.getComponent("inventory").container.getItem(player.selectedSlotIndex);
+  if (!item) return;
+  const itemName = item.typeId.toLowerCase();
+
+  // Cancel interaction if the item name contains any invalid strings
+  if (invalidItemNames.some(name => itemName.includes(name))) return;
+
+  // Get the block at the location where the player is interacting
+  const currentBlock = dimension.getBlock(blockLocation);
+
+  // Check if the block is a type of chair, if not, return
+  if (!currentBlock.typeId.includes("chair")) {
+    return;
+  }
+
+  // Cancel interaction if the player isn't sneaking (prevents block placement)
+  if (!player.isSneaking) {
+    eventData.cancel = true;  // Cancel block placement
+  }
+
+  // Check if the block above the current block is breathable (e.g., air, signs, etc.)
+  const blockAbove1 = dimension.getBlock({ x: blockLocation.x, y: blockLocation.y + 1, z: blockLocation.z });
+  const isBreathableBlock = (typeId) => (
+      typeId === "minecraft:air" ||
+      typeId.includes("sign") ||
+      typeId === "minecraft:frame" ||
+      typeId === "minecraft:glow_frame" ||
+      typeId === "minecraft:painting" ||
+      typeId === "minecraft:banner" ||
+      typeId.includes("gate") ||
+      typeId.includes("door") ||
+      typeId.includes("button") ||
+      typeId.includes("torch") ||
+      typeId.includes("lever") ||
+      typeId.includes("rod") ||
+      typeId.includes("chain")
+    );
+
+  if (!isBreathableBlock(blockAbove1.typeId)) return;
+
+  // Check if the interaction was on the bottom face of the block, return if it was
+  const blockFace = eventData.blockFace;
+  if (blockFace === Direction.Down) return;
+  if (player.isSneaking) return;
+
+  // Ensure the player is on the ground and the block height difference is less than 3
+  const playerY = Math.floor(player.location.y);
+  if (!player.isOnGround || Math.abs(blockLocation.y - playerY) >= 3) {
+    return;
+  }
+
+  // Check if there is already a seat entity at this block location
+  const isSeatPresent = dimension.getEntities().some(entity => {
+    if (entity.typeId === "fa:seat") {
+      const entityLocation = entity.location;
+      return (
+        Math.floor(entityLocation.x) === Math.floor(blockLocation.x) &&
+        Math.floor(entityLocation.y) === Math.floor(blockLocation.y) &&
+        Math.floor(entityLocation.z) === Math.floor(blockLocation.z)
+      );
     }
     return false;
-}
+  });
 
-// Event handler for using an item on a block
-world.beforeEvents.itemUseOn.subscribe(ev => {
-    const player = world.getAllPlayers().find(v => v.id == ev.source.id);
-    if (ev.source.typeId !== "minecraft:player" || !ev.itemStack?.hasTag("xassassin:wrench")) return;
+  if (isSeatPresent) return;
 
-    // Ensure the cooldown has expired before proceeding
-    if (!hasCooldownExpired(player)) return;
+  // Add the player to the cooldown set to prevent repeated seating
+  const playerId = player.id;
+  if (cooldowns.has(playerId)) return;
 
-    const block = ev.block;
-    const blockTypeId = block.typeId; // Use typeId to get the block's identifier
+  cooldowns.add(playerId);
+  system.runTimeout(() => cooldowns.delete(playerId), cooldownDuration);
 
-    // Return if the block's typeId includes "smithing", "frame", or "vault"
-    if (blockTypeId.includes("smithing") || blockTypeId.includes("frame") || blockTypeId.includes("shulker") || blockTypeId.includes("button") || blockTypeId.includes("crafting_table") || blockTypeId.includes("vault")) {
-        return;
+  // Spawn the seat entity with the correct rotation after a short delay
+  system.runTimeout(() => {
+    const blockPermutation = currentBlock.permutation;
+    const cardinalDirection = blockPermutation.getState("minecraft:cardinal_direction");
+
+    // Set the seat rotation based on the block's cardinal direction
+    let seatRotation = 0;
+    switch (cardinalDirection) {
+      case "north":
+        seatRotation = 0;
+        break;
+      case "west":
+        seatRotation = 270;
+        break;
+      case "south":
+        seatRotation = 180;
+        break;
+      case "east":
+        seatRotation = 90;
+        break;
+      default:
+        seatRotation = 0;
+        break;
     }
 
-    ev.cancel = true; // Cancel default behavior
-
-    const hasProperties = blockHasValidProperties(block);
-
-    // Delay by 5 ticks to check for the wrench and damage the item
-    system.runTimeout(() => {
-        if (isHoldingWrench(player) && hasProperties) {
-            const mainhand = player.getComponent('minecraft:equippable');
-            const item = mainhand.getEquipment(EquipmentSlot.Mainhand);
-            if (item && player.getGameMode() !== 'creative') damageItem(item, player);
-        }
-        player.playSound("break.heavy_core"); // Play a sound when the wrench is used
-    }, 5);
-
-    // If the player is sneaking, display block info; otherwise, modify the block's property
-    if (player.isSneaking) {
-        displayBlockInfo(player, block);
-    } else if (hasProperties && !isExcludedBlock(block)) {
-        updateBlockProperty(player, block);
-    }
-});
-
-// Event handler for breaking a block
-world.afterEvents.playerBreakBlock.subscribe(eventData => {
-    const player = eventData.player;
-    const block = eventData.block;
-
-    // If the player is holding a wrench and the block is not excluded, damage the wrench
-    if (isHoldingWrench(player) && !isExcludedBlock(block)) {
-        const mainhand = player.getComponent('minecraft:equippable');
-        const item = mainhand.getEquipment(EquipmentSlot.Mainhand);
-        if (item) damageItem(item, player);
-    }
-});
-
-// Event handler for hitting a block
-world.afterEvents.entityHitBlock.subscribe(ev => {
-    if (ev.damagingEntity.typeId !== "minecraft:player") return;
-    const player = world.getAllPlayers().find(v => v.id == ev.damagingEntity.id);
-    const block = ev.hitBlock;
-
-    // Ensure the player is holding a wrench before proceeding
-    if (!isHoldingWrench(player)) return;
-
-    player.playSound("break.heavy_core"); // Play a sound when the wrench hits the block
-
-    // Change the selected property of the block if it has valid modifiable properties
-    if (blockHasValidProperties(block) && !isExcludedBlock(block)) {
-        changeSelectedProperty(player, block);
-    }
-});
-
-// Function to cycle through allowed block properties and select the next one
-function changeSelectedProperty(player, block) {
-    const permutation = block.permutation;
-    const states = permutation.getAllStates();
-    let names = Object.keys(states).filter(name => allowedStates.includes(name)); 
-
-    if (!names.length) return;
-
-    // Exclude "facing_direction" for furnace-like blocks
-    if (block.typeId.includes("furnace") || block.typeId.includes("chest") || block.typeId.includes("observer") || block.typeId.includes("smoker")) {
-        const index = names.indexOf("facing_direction");
-        if (index > -1) names.splice(index, 1);
-    }
-
-    // Cycle through the list of properties and select the next one
-    let prop = names[names.indexOf(record[player.id]) + 1];
-    let val = states[prop];
-
-    if (!prop) {
-        prop = names[0];
-        val = states[prop];
-    }
-
-    record[player.id] = prop; // Store the selected property for the player
-    message(`selected "${prop}" (${val})`, player); // Send a message to the player about the selected property
-}
-
-// Function to update the block's selected property to the next valid value
-function updateBlockProperty(player, block) {
-    const permutation = block.permutation;
-    const states = permutation.getAllStates();
-    let names = Object.keys(states).filter(name => allowedStates.includes(name)); 
-
-    if (!names.length) {
-        message("No properties to change.", player);
-        return;
-    }
-
-    // Exclude "facing_direction" for furnace-like blocks
-    if (block.typeId.includes("furnace", "smoker", "chest", "observer")) {
-        const index = names.indexOf("facing_direction");
-        if (index > -1) names.splice(index, 1);
-    }
-
-    let prop = record[player.id];
-    let val;
-
-    if (!names.includes(prop)) prop = names[0];
-
-    const isHopper = block.typeId === "minecraft:hopper";
-
-    // Handle the special case for hoppers
-    if (prop === "facing_direction") {
-        if (isHopper && states[prop] === 0) {
-            val = 2; // Set hopper facing down to face north
-        } else {
-            const valids = BlockStates.get(prop).validValues;
-            val = valids[valids.indexOf(states[prop]) + 1];
-            if (typeof val === "undefined") val = valids[0];
-        }
-    } else {
-        // For other block states, cycle to the next valid value
-        const valids = BlockStates.get(prop).validValues;
-        val = valids[valids.indexOf(states[prop]) + 1];
-        if (typeof val === "undefined") val = valids[0];
-    }
-
-    // Update the block with the new state value
-    system.run(() => {
-        block.setPermutation(permutation.withState(prop, val));
+    // Spawn the seat entity at the block's location
+    const seat = dimension.spawnEntity("fa:seat", {
+      x: blockLocation.x + 0.5,
+      y: blockLocation.y,
+      z: blockLocation.z + 0.5,
     });
 
-    record[player.id] = prop; // Store the selected property for the player
-    message(`"${prop}" to ${val}`, player); // Send a message about the updated property value
-}
+    // Set the seat's rotation and add the player as a rider
+    seat.setRotation({ x: 0, y: seatRotation });
+    seat.getComponent("rideable").addRider(player);
+    activeSeats.set(seat.id, blockLocation);
 
-// Checks if a block has any valid modifiable properties from the allowed states
-function blockHasValidProperties(block) {
-    const states = block.permutation.getAllStates();
-    return Object.keys(states).some(name => allowedStates.includes(name));
-}
+    // Periodically check if the seat is still valid
+    const checkInterval = system.runInterval(() => {
+      const seatEntity = world.getEntity(seat.id);
+      if (!seatEntity) {
+        system.clearRun(checkInterval);
+        return;
+      }
 
-// Checks if a block is excluded from modification (e.g., banners, buttons, levers, and wall signs)
-function isExcludedBlock(block) {
-    return block.typeId.includes("wall_banner") || block.typeId.includes("button") || block.typeId.includes("ladder") || block.typeId.includes("lever") || block.typeId.includes("wall_sign");
-}
+      // Check if the block the seat is on has been removed
+      const currentBlock = dimension.getBlock(activeSeats.get(seat.id));
+      const isBlockRemoved = currentBlock.typeId === "minecraft:air" ||
+                             currentBlock.typeId === "minecraft:water" ||
+                             currentBlock.typeId === "minecraft:lava";
 
-// Function to display block information
-function displayBlockInfo(player, block) {
-    let info = "§l§b" + block.typeId + "§r";
-    info += "\n§4" + block.x + " §a" + block.y + " §9" + block.z;
-    
-    // Display only the allowed states
-    Object.entries(block.permutation.getAllStates()).forEach(([k, v]) => {
-        if (allowedStates.includes(k)) {
-            info += "\n§o§7" + k + "§r§8: ";
-            if (typeof v === "string") info += "§e";
-            if (typeof v === "number") info += "§3";
-            if (typeof v === "boolean") info += "§6";
-            info += v;
-        }
-    });
+      // Check if there are any nearby players to keep the seat active
+      const nearbyPlayers = world.getPlayers().filter(p => {
+        const distance = Math.sqrt(
+          Math.pow(p.location.x - seatEntity.location.x, 2) +
+          Math.pow(p.location.y - seatEntity.location.y, 2) +
+          Math.pow(p.location.z - seatEntity.location.z, 2)
+        );
+        return distance <= 0.5;
+      });
 
-    message(info, player); // Display the info message
-        }
+      // Remove the seat if the block was removed or no players are nearby
+      if (isBlockRemoved || nearbyPlayers.length === 0) {
+        seatEntity.remove();
+        activeSeats.delete(seat.id);
+        system.clearRun(checkInterval);
+      }
+    }, 10);  // Check every 10 ticks
+  }, 5);  // Delay the seat spawning by 5 ticks
+});
+
+// Event listener for when an entity is hurt (e.g., player takes damage)
+world.afterEvents.entityHurt.subscribe((eventData) => {
+  const entity = eventData.hurtEntity;
+
+  // Only run if the entity hurt is a player
+  if (entity.typeId !== "minecraft:player") return;
+
+  const player = entity;
+  const dimension = world.getDimension(player.dimension.id);
+  const seatEntities = dimension.getEntities()
+    .filter(e => e.typeId === "fa:seat");
+
+  // Remove any seat entities near the player when they are hurt
+  seatEntities.forEach(seatEntity => {
+    const distance = Math.sqrt(
+      Math.pow(player.location.x - seatEntity.location.x, 2) +
+      Math.pow(player.location.y - seatEntity.location.y, 2) +
+      Math.pow(player.location.z - seatEntity.location.z, 2)
+    );
+    if (distance <= 0.5) {
+      seatEntity.remove();
+    }
+  });
+});
