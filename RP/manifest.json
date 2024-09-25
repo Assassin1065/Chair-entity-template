@@ -1,0 +1,33 @@
+{
+
+    "format_version": 2,
+
+    "header": {
+
+        "description": "Wrenches. Basically a debug stick for survival.",
+
+        "name": "§cxAssassin's §aWrenches§r §l§gRP§r",
+
+        "uuid": "3776e493-6143-47c8-ade4-d3257c9e0d84",
+
+        "version": [1, 0, 1],
+
+        "min_engine_version": [ 1, 20, 40 ]
+
+    },
+
+    "modules": [
+
+        {
+
+            "type": "resources",
+
+            "uuid": "0963dde1-dc6d-48df-ac6e-29007514aa3f",
+
+            "version": [0, 0, 1]
+
+        }
+
+    ]
+
+}

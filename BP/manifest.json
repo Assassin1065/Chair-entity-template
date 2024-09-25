@@ -1,0 +1,35 @@
+{
+  "format_version": 2,
+
+  "header": {
+    "name": "§cxAssassin's §aWrenches§r §l§gBP§r",
+    "description": "Wrenches. Basically a debug stick for survival.",
+    "uuid": "be747637-62bd-462e-a0ba-dfdd81ac1ffe",
+    "version": "1.0.0",
+    "min_engine_version": [ 1, 21, 0 ]
+  },
+
+  "modules": [
+    {
+      "description": "behaviour",
+      "type": "data",
+      "uuid": "d2edf6b7-0afa-4639-9ae3-436535ca8e16",
+      "version": [ 1, 0, 0 ]
+    },
+    {
+      "description": "scripting",
+      "type": "script",
+      "language": "javascript",
+      "entry": "scripts/index.js",
+      "uuid": "a6fdd76e-e520-4c2b-88b6-4f52aaac183e",
+      "version": [ 1, 0, 0 ]
+    }
+  ],
+
+  "dependencies": [
+    {
+      "module_name": "@minecraft/server",
+      "version": "1.14.0"
+    }
+  ]
+}

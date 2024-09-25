@@ -1,0 +1,25 @@
+{
+    "format_version": "1.12",
+    "minecraft:recipe_shaped": {
+        "description": {
+            "identifier": "xassassin:stone_wrench"
+        },
+        "tags": [
+            "crafting_table"
+        ],
+        "pattern": [
+            " c ",
+            " cc",
+            "c  "
+        ],
+        "key": {
+            "c": {
+                "item": "minecraft:cobblestone"
+            }
+        },
+        "result": {
+            "item": "xassassin:stone_wrench",
+            "count": 1
+        }
+    }
+}
