@@ -32,7 +32,7 @@ const initializeScript = () => {
     const dimensions = ["minecraft:overworld", "minecraft:nether", "minecraft:the_end"];
     dimensions.forEach(dimensionName => {
       const dimension = world.getDimension(dimensionName);
-      const seatEntities = dimension.getEntities().filter(entity => entity.typeId === "fa:seat");
+      const seatEntities = dimension.getEntities().filter(entity => entity.typeId === "xassassin:seat");
 
       // Use Entity.kill() instead of running the /kill command to clean up
       seatEntities.forEach(seatEntity => seatEntity.kill());
