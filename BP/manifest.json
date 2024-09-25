@@ -1,35 +1,32 @@
 {
-  "format_version": 2,
-
-  "header": {
-    "name": "§cxAssassin's §aWrenches§r §l§gBP§r",
-    "description": "Wrenches. Basically a debug stick for survival.",
-    "uuid": "be747637-62bd-462e-a0ba-dfdd81ac1ffe",
-    "version": "1.0.0",
-    "min_engine_version": [ 1, 21, 0 ]
-  },
-
-  "modules": [
-    {
-      "description": "behaviour",
-      "type": "data",
-      "uuid": "d2edf6b7-0afa-4639-9ae3-436535ca8e16",
-      "version": [ 1, 0, 0 ]
-    },
-    {
-      "description": "scripting",
-      "type": "script",
-      "language": "javascript",
-      "entry": "scripts/index.js",
-      "uuid": "a6fdd76e-e520-4c2b-88b6-4f52aaac183e",
-      "version": [ 1, 0, 0 ]
-    }
-  ],
-
-  "dependencies": [
-    {
-      "module_name": "@minecraft/server",
-      "version": "1.14.0"
-    }
-  ]
+	"format_version": 2,
+	"header": {
+		"name": "Vanilla Seat",
+		"description": "Developed by §cxAssassin",
+		"uuid": "d0f9a44a-2c8b-4b6f-9d20-f8a6c2b1d9f1",
+		"min_engine_version": [1, 20, 0],
+		"version": [1, 0, 1]
+	},
+	"modules": [
+		{
+			"description": "Behavior Pack Module",
+			"type": "data",
+			"uuid": "a93c65e4-42b1-4d4b-9f70-27bb6a2a8c1b",
+			"version": [1, 0, 1]
+		},
+		{
+			"description": "ScriptApi Module",
+			"type": "script",
+			"language": "javascript",
+			"entry": "scripts/main.js",
+			"uuid": "b1e25d91-2a34-4a0c-8a55-6b0c47f40f84",
+			"version": [1, 0, 1]
+		}
+	],
+	"dependencies": [
+		{
+			"module_name": "@minecraft/server",
+			"version": "1.13.0"
+		}
+	]
 }
