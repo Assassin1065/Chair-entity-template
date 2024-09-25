@@ -102,7 +102,7 @@ world.beforeEvents.itemUseOn.subscribe((eventData) => {
 
   // Check if there is already a seat entity at this block location
   const isSeatPresent = dimension.getEntities().some(entity => {
-    if (entity.typeId === "fa:seat") {
+    if (entity.typeId === "xassassin:seat") {
       const entityLocation = entity.location;
       return (
         Math.floor(entityLocation.x) === Math.floor(blockLocation.x) &&
@@ -148,7 +148,7 @@ world.beforeEvents.itemUseOn.subscribe((eventData) => {
     }
 
     // Spawn the seat entity at the block's location
-    const seat = dimension.spawnEntity("fa:seat", {
+    const seat = dimension.spawnEntity("xassassin:seat", {
       x: blockLocation.x + 0.5,
       y: blockLocation.y,
       z: blockLocation.z + 0.5,
@@ -203,7 +203,7 @@ world.afterEvents.entityHurt.subscribe((eventData) => {
   const player = entity;
   const dimension = world.getDimension(player.dimension.id);
   const seatEntities = dimension.getEntities()
-    .filter(e => e.typeId === "fa:seat");
+    .filter(e => e.typeId === "xassassin:seat");
 
   // Remove any seat entities near the player when they are hurt
   seatEntities.forEach(seatEntity => {
