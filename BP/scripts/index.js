@@ -92,7 +92,6 @@ world.beforeEvents.itemUseOn.subscribe((eventData) => {
   // Check if the interaction was on the bottom face of the block, return if it was
   const blockFace = eventData.blockFace;
   if (blockFace === Direction.Down) return;
-  if (player.isSneaking) return;
 
   // Ensure the player is on the ground and the block height difference is less than 3
   const playerY = Math.floor(player.location.y);
@@ -101,19 +100,32 @@ world.beforeEvents.itemUseOn.subscribe((eventData) => {
   }
 
   // Check if there is already a seat entity at this block location
-  const isSeatPresent = dimension.getEntities().some(entity => {
-    if (entity.typeId === "xassassin:seat") {
-      const entityLocation = entity.location;
-      return (
-        Math.floor(entityLocation.x) === Math.floor(blockLocation.x) &&
-        Math.floor(entityLocation.y) === Math.floor(blockLocation.y) &&
-        Math.floor(entityLocation.z) === Math.floor(blockLocation.z)
-      );
-    }
-    return false;
-  });
+  const seatEntity = dimension.getEntities().find(entity => 
+    entity.typeId === "xassassin:seat" && 
+    Math.floor(entity.location.x) === Math.floor(blockLocation.x) &&
+    Math.floor(entity.location.y) === Math.floor(blockLocation.y) &&
+    Math.floor(entity.location.z) === Math.floor(blockLocation.z)
+  );
 
-  if (isSeatPresent) return;
+  // If a seat exists, check for nearby players
+  if (seatEntity) {
+    const nearbyPlayers = world.getPlayers().filter(p => {
+      const distance = Math.sqrt(
+        Math.pow(p.location.x - seatEntity.location.x, 2) +
+        Math.pow(p.location.y - seatEntity.location.y, 2) +
+        Math.pow(p.location.z - seatEntity.location.z, 2)
+      );
+      return distance <= 0.3; // Check if within 0.3 blocks
+    });
+
+    // If there's already a player nearby, return
+    if (nearbyPlayers.length > 0) {
+      return;
+    } else {
+      // Remove the existing seat entity
+      seatEntity.remove();
+    }
+  }
 
   // Add the player to the cooldown set to prevent repeated seating
   const playerId = player.id;
