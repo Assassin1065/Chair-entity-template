@@ -60,10 +60,12 @@ const handleItemUseOn = (eventData) => {
   const currentBlock = dimension.getBlock(blockLocation);
   if (!currentBlock.typeId.includes("chair")) return;
 
-  if (!player.isSneaking) {
+    if (!player.isSneaking) {
     eventData.cancel = true;
+  } else {
     return;
   }
+
 
   const blockAbove1 = dimension.getBlock({ x: blockLocation.x, y: blockLocation.y + 1, z: blockLocation.z });
   if (!isBreathableBlock(blockAbove1.typeId)) return;
