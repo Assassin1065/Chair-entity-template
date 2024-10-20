@@ -1,161 +1,134 @@
 /*============================================================================*\
 +*
-+* This project is an open source template to make some blocks act like chairs, this accomplishes that by spawning in an entity and seating the player on it, and removing the entity when it's not used.
++* This project is an open source template to make some blocks act like chairs, 
++* this accomplishes that by spawning in an entity and seating the player on it, 
++* and removing the entity when it's not used.
 +*
 +* Copyright (c) 2024 xAssassin <https://Assassin1065.github.io>
 +* This project is licensed under the MIT License.
 +* See LICENSE for more details.
-+* See Credits.txt for a list of contributors. Thank you to all of them for making this project possible.
++* See Credits.txt for a list of contributors. Thank you to all of them for 
++* making this project possible.
 +*
 \*============================================================================*/
 
 import { world, system, Direction } from "@minecraft/server";
 
-// Define cooldown set and active seats map for managing cooldowns and seat entities.
+// Constants for cooldown duration and seat radius
+const COOLDOWN_DURATION = 5;
+const SEAT_RADIUS = 0.25;
+
+// Set of blocks that the player can breathe through
+const BREATHABLE_BLOCKS = new Set([
+    "minecraft:air", "minecraft:frame", "minecraft:glow_frame", "minecraft:painting", "minecraft:banner",
+    "minecraft:water", "minecraft:lava"
+]);
+
+// Prefixes of blocks that are considered breathable (like doors, signs, etc.)
+const BREATHABLE_PREFIXES = ["sign", "gate", "door", "button", "torch", "lever", "rod", "chain"];
+
+// List of invalid item names, including the "chair" to avoid recursive interaction
+const INVALID_ITEM_NAMES = ["debug", "bucket", "spawn_egg", "steel", "chair"];
+
+// List of Minecraft dimension names
+const DIMENSIONS = ["minecraft:overworld", "minecraft:nether", "minecraft:the_end"];
+
+// Set to keep track of players with active cooldowns
 const cooldowns = new Set();
+
+// Map to store active seat entities with their locations
 const activeSeats = new Map();
-const cooldownDuration = 5;
 
-// Define item names that are invalid for interacting with chairs.
-const invalidItemNames = [
-    "debug", "bucket", "spawn_egg", "steel", "chair"
-];
+// Helper function to determine if a block is breathable
+const isBreathableBlock = (typeId) => (
+    BREATHABLE_BLOCKS.has(typeId) || BREATHABLE_PREFIXES.some(prefix => typeId.includes(prefix))
+);
 
-// Initialize the script and run a cleanup function to remove leftover seat entities.
+// Initialization function to set up the script
 const initializeScript = () => {
   console.warn("§g§lChairs§r§a loaded§r");
 
+  // Run once to clean up leftover seat entities in each dimension
   system.runTimeout(() => {
-    const dimensions = ["minecraft:overworld", "minecraft:nether", "minecraft:the_end"];
-    dimensions.forEach(dimensionName => {
+    DIMENSIONS.forEach(dimensionName => {
       const dimension = world.getDimension(dimensionName);
       const seatEntities = dimension.getEntities().filter(entity => entity.typeId === "xassassin:seat");
+      
+      // Kill all existing seat entities
       seatEntities.forEach(seatEntity => seatEntity.kill());
     });
   }, 1);
 };
 
-initializeScript();
+// Helper function to check if a player is within a certain radius of a seat entity
+const playerWithinRadius = (player, seatEntity, radius) => {
+  const distance = Math.sqrt(
+    Math.pow(player.location.x - seatEntity.location.x, 2) +
+    Math.pow(player.location.y - seatEntity.location.y, 2) +
+    Math.pow(player.location.z - seatEntity.location.z, 2)
+  );
+  return distance <= radius;
+};
 
-// Subscribe to itemUseOn events to detect chair interactions.
-world.beforeEvents.itemUseOn.subscribe((eventData) => {
+// Event handler for item use on a block (to detect if a player is trying to sit)
+const handleItemUseOn = (eventData) => {
   const player = eventData.source;
   const blockLocation = eventData.block.location;
   const dimension = world.getDimension(player.dimension.id);
-
-  // Check if the item in the player's hand is invalid for interacting with a chair.
   const item = player.getComponent("inventory").container.getItem(player.selectedSlotIndex);
-  if (!item) return;
-  const itemName = item.typeId.toLowerCase();
 
-  if (invalidItemNames.some(name => itemName.includes(name))) return;
+  // Return if the item is invalid
+  if (!item || INVALID_ITEM_NAMES.some(name => item.typeId.toLowerCase().includes(name))) return;
 
-  // Check if the current block is a chair.
   const currentBlock = dimension.getBlock(blockLocation);
+  // Only proceed if the block is a chair
+  if (!currentBlock.typeId.includes("chair")) return;
 
-  if (!currentBlock.typeId.includes("chair")) {
-    return;
-  }
-
-  // If the player is sneaking, do not cancel the event.
+  // If the player is not sneaking, cancel the event
   if (!player.isSneaking) {
-    eventData.cancel = true;
+    eventData.cancel = true; 
   } else {
     return;
   }
 
-  // Check if the block above the chair is breathable.
   const blockAbove1 = dimension.getBlock({ x: blockLocation.x, y: blockLocation.y + 1, z: blockLocation.z });
-  const isBreathableBlock = (typeId) => (
-      typeId === "minecraft:air" ||
-      typeId.includes("sign") ||
-      typeId === "minecraft:frame" ||
-      typeId === "minecraft:glow_frame" ||
-      typeId === "minecraft:painting" ||
-      typeId === "minecraft:banner" ||
-      typeId.includes("gate") ||
-      typeId.includes("door") ||
-      typeId.includes("button") ||
-      typeId.includes("torch") ||
-      typeId.includes("lever") ||
-      typeId.includes("rod") ||
-      typeId.includes("chain")
-    );
-
+  // Check if the block above is breathable
   if (!isBreathableBlock(blockAbove1.typeId)) return;
+  
+  // Do not allow seating if the block face is down
+  if (eventData.blockFace === Direction.Down) return;
 
-  // If interacting with the block from below, don't place the player in the chair.
-  const blockFace = eventData.blockFace;
-  if (blockFace === Direction.Down) return;
-
-  // Ensure the player is close enough to the block location and on the ground.
   const playerY = Math.floor(player.location.y);
-  if (!player.isOnGround || Math.abs(blockLocation.y - playerY) >= 3) {
-    return;
-  }
+  // Ensure the player is on the ground and within a certain height range
+  if (!player.isOnGround || Math.abs(blockLocation.y - playerY) >= 3) return;
 
-  // Check if a seat entity already exists at this block location.
-  const seatEntity = dimension.getEntities().find(entity => 
+  // Check if a seat entity already exists at the block location
+  const existingSeatEntity = dimension.getEntities().find(entity => 
     entity.typeId === "xassassin:seat" && 
     Math.floor(entity.location.x) === Math.floor(blockLocation.x) &&
     Math.floor(entity.location.y) === Math.floor(blockLocation.y) &&
     Math.floor(entity.location.z) === Math.floor(blockLocation.z)
   );
 
-  if (seatEntity) {
-    // Check if there is a player within 0.25 blocks of the seat entity.
-    const nearbyPlayers = world.getPlayers().filter(p => {
-      const distance = Math.sqrt(
-        Math.pow(p.location.x - seatEntity.location.x, 2) +
-        Math.pow(p.location.y - seatEntity.location.y, 2) +
-        Math.pow(p.location.z - seatEntity.location.z, 2)
-      );
-      return distance <= 0.25;
-    });
-
-    // If no players are nearby, schedule the seat entity for removal.
+  // If a seat entity exists, remove it after the cooldown if no players are nearby
+  if (existingSeatEntity) {
+    const nearbyPlayers = world.getPlayers().filter(p => playerWithinRadius(p, existingSeatEntity, SEAT_RADIUS));
     if (nearbyPlayers.length === 0) {
-      system.runTimeout(() => {
-        seatEntity.remove();
-      }, 5);
-    } else {
-      return;
+      system.runTimeout(() => existingSeatEntity.remove(), COOLDOWN_DURATION);
     }
+    return;
   }
 
-  // If the player is in cooldown, don't allow further interactions.
-  const playerId = player.id;
-  if (cooldowns.has(playerId)) return;
+  // Prevent repeated actions by adding the player to the cooldown set
+  if (cooldowns.has(player.id)) return;
+  cooldowns.add(player.id);
+  system.runTimeout(() => cooldowns.delete(player.id), COOLDOWN_DURATION);
 
-  cooldowns.add(playerId);
-  system.runTimeout(() => cooldowns.delete(playerId), cooldownDuration);
-
-  // Delay the spawn of the seat entity slightly.
+  // Spawn the seat entity and make the player sit on it
   system.runTimeout(() => {
-    // Determine the seat entity's rotation based on the chair's direction.
-    const blockPermutation = currentBlock.permutation;
-    const cardinalDirection = blockPermutation.getState("minecraft:cardinal_direction");
+    const cardinalDirection = currentBlock.permutation.getState("minecraft:cardinal_direction");
+    const seatRotation = { north: 0, west: 270, south: 180, east: 90 }[cardinalDirection] || 0;
 
-    let seatRotation = 0;
-    switch (cardinalDirection) {
-      case "north":
-        seatRotation = 0;
-        break;
-      case "west":
-        seatRotation = 270;
-        break;
-      case "south":
-        seatRotation = 180;
-        break;
-      case "east":
-        seatRotation = 90;
-        break;
-      default:
-        seatRotation = 0;
-        break;
-    }
-
-    // Spawn the seat entity at the chair location and make the player sit on it.
     const seat = dimension.spawnEntity("xassassin:seat", {
       x: blockLocation.x + 0.5,
       y: blockLocation.y,
@@ -166,7 +139,7 @@ world.beforeEvents.itemUseOn.subscribe((eventData) => {
     seat.getComponent("rideable").addRider(player);
     activeSeats.set(seat.id, blockLocation);
 
-    // Check regularly if the seat entity should be removed.
+    // Interval to check the seat's status and remove it if needed
     const checkInterval = system.runInterval(() => {
       const seatEntity = world.getEntity(seat.id);
       if (!seatEntity) {
@@ -175,54 +148,34 @@ world.beforeEvents.itemUseOn.subscribe((eventData) => {
       }
 
       const currentBlock = dimension.getBlock(activeSeats.get(seat.id));
-      const isBlockRemoved = currentBlock.typeId === "minecraft:air" ||
-                             currentBlock.typeId === "minecraft:water" ||
-                             currentBlock.typeId === "minecraft:lava";
+      const isBlockRemoved = BREATHABLE_BLOCKS.has(currentBlock.typeId);
 
-      // Check if a player is within 0.5 blocks of the seat entity.
-      const nearbyPlayers = world.getPlayers().filter(p => {
-        const distance = Math.sqrt(
-          Math.pow(p.location.x - seatEntity.location.x, 2) +
-          Math.pow(p.location.y - seatEntity.location.y, 2) +
-          Math.pow(p.location.z - seatEntity.location.z, 2)
-        );
-        return distance <= 0.5;
-      });
-
-      // Remove the seat entity if the chair is removed or no players are nearby.
+      const nearbyPlayers = world.getPlayers().filter(p => playerWithinRadius(p, seatEntity, 0.5));
       if (isBlockRemoved || nearbyPlayers.length === 0) {
-        system.runTimeout(() => {
-          seatEntity.remove();
-        }, 5);
+        system.runTimeout(() => seatEntity.remove(), COOLDOWN_DURATION);
         activeSeats.delete(seat.id);
         system.clearRun(checkInterval);
       }
     }, 10);
   }, 5);
-});
+};
 
-// Handle entityHurt events to remove seat entities when nearby players are hurt.
-world.afterEvents.entityHurt.subscribe((eventData) => {
-  const entity = eventData.hurtEntity;
+// Event handler for when a player is hurt (removes the seat if the player is near one)
+const handleEntityHurt = (eventData) => {
+  const player = eventData.hurtEntity;
+  if (player.typeId !== "minecraft:player") return;
 
-  if (entity.typeId !== "minecraft:player") return;
-
-  const player = entity;
   const dimension = world.getDimension(player.dimension.id);
-  const seatEntities = dimension.getEntities()
-    .filter(e => e.typeId === "xassassin:seat");
+  const seatEntities = dimension.getEntities().filter(e => e.typeId === "xassassin:seat");
 
   seatEntities.forEach(seatEntity => {
-    const distance = Math.sqrt(
-      Math.pow(player.location.x - seatEntity.location.x, 2) +
-      Math.pow(player.location.y - seatEntity.location.y, 2) +
-      Math.pow(player.location.z - seatEntity.location.z, 2)
-    );
-    if (distance <= 0.5) {
-      system.runTimeout(() => {
-        seatEntity.remove();
-      }, 5);
+    if (playerWithinRadius(player, seatEntity, 0.5)) {
+      system.runTimeout(() => seatEntity.remove(), COOLDOWN_DURATION);
     }
   });
-});
-});
+};
+
+// Initialize the script and set up event subscriptions
+initializeScript();
+world.beforeEvents.itemUseOn.subscribe(handleItemUseOn);
+world.afterEvents.entityHurt.subscribe(handleEntityHurt);
