@@ -23,7 +23,7 @@ const BREATHABLE_BLOCKS = new Set([
     "minecraft:air", "minecraft:frame", "minecraft:glow_frame", "minecraft:painting", "minecraft:banner",
     "minecraft:water", "minecraft:lava"
 ]);
-const BREATHABLE_PREFIXES = ["sign", "gate", "door", "button", "torch", "lever", "rod", "chain", "cobweb"];
+const BREATHABLE_PREFIXES = ["sign", "gate", "door", "button", "torch", "lever", "rod", "chain", "cobweb", "hanging", "berry"];
 //invalid item names just means any items with these names will not allow you to sit on the chair block when you right click it.
 const INVALID_ITEM_NAMES = ["debug", "bucket", "spawn_egg", "steel", "chair"];
 
