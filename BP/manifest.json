@@ -1,7 +1,7 @@
 {
 	"format_version": 2,
 	"header": {
-		"name": "Vanilla Seat",
+		"name": "Vanilla Chair",
 		"description": "Developed by §cxAssassin",
 		"uuid": "d0f9a44a-2c8b-4b6f-9d20-f8a6c2b1d9f1",
 		"min_engine_version": [1, 20, 0],
@@ -18,7 +18,7 @@
 			"description": "ScriptApi Module",
 			"type": "script",
 			"language": "javascript",
-			"entry": "scripts/main.js",
+			"entry": "scripts/index.js",
 			"uuid": "b1e25d91-2a34-4a0c-8a55-6b0c47f40f84",
 			"version": [1, 0, 1]
 		}
@@ -26,7 +26,7 @@
 	"dependencies": [
 		{
 			"module_name": "@minecraft/server",
-			"version": "1.13.0"
+			"version": "1.15.0"
 		}
 	]
 }
