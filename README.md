@@ -1,6 +1,6 @@
 # Chair Entity Template
 
-This template allows you to make any block with the term "chair" functional by right-clicking the block with an item in your hand.
+This template allows you to make any block with the term "chair" functional by right-clicking the block.
 
 ## Features
 
